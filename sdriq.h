@@ -60,6 +60,12 @@
 	                	    				   gain value for AD8370.  Bit 7 enables or
                 		    				   disables a fixed front-end 10dB attenuator. */
 
+typedef struct {
+    uint16_t length;
+    uint8_t type;
+    uint16_t control_item;
+    char *data;
+} SDRIQ_Message;
 
 typedef struct {
     char *model;
