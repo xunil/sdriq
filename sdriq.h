@@ -1,10 +1,10 @@
-/* vim:ts=4:sw=4:et */
+// vim:ts=4:sw=4:et
 #ifndef _SDRIQ_H
 #define _SDRIQ_H 1
 #include <sys/select.h>
 
 #define MAX_DELAY_SECS 0
-#define MAX_DELAY_USECS 5000
+#define MAX_DELAY_USECS 1000000
 
 #define COMMAND_BUF_SIZE 32
 #define READ_BUF_SIZE 9000
@@ -79,14 +79,12 @@ typedef struct {
     
 typedef struct {
     int fd;
-    fd_set readfs, writefds, exceptfds;
-    struct timeval tv;
     char *command_buf;
     char *read_buf;
     SDRIQ_Info *info;
 } SDRIQ;
 
-int sdriq_init(SDRIQ *sdriq, char *devnode);
+SDRIQ *sdriq_init(char *devnode);
 int sdriq_get_info(SDRIQ *sdriq);
 int sdriq_begin_capture(SDRIQ *sdriq);
 int sdriq_end_capture(SDRIQ *sdriq);

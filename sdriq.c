@@ -1,4 +1,4 @@
-/* vim:ts=4:sw=4:et */
+// vim:ts=4:sw=4:et
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -7,36 +7,58 @@
 #include <fcntl.h>
 #include <errno.h> 
 #include <string.h>
+#include <assert.h>
 //#include <sndfile.h>
 #include "sdriq.h"
 
-int build_message(uint8_t message_type, uint16_t message, char *message_buf, uint16_t message_buf_len, 
-                    const char *parameters, uint16_t param_len) {
+int build_message(SDRIQ *sdriq, SDRIQ_Message *message) { 
+    char *p;
     uint16_t message_len = 4;   // Request will always consist of at least the control item header; 2 bytes
                                 // and the control item ID itself; another 2 bytes
-	char *p;
-
-    if (message_buf == NULL) {
-        return -1;
+    if (message->data != NULL && message->length > 0) {
+        message_len += message->length;
     }
 
-    if (parameters != NULL && param_len > 0) {
-        if (message_len + param_len > message_buf_len) {
-            return -2;
-        }
-
-        message_len += param_len;
-        memcpy (message_buf+4, parameters, param_len);
-    }
-
-	p = message_buf;
+    p = sdriq->command_buf = (char *)malloc(message_len);
     *p = (message_len & 0xFF);        // Length LSB
-	*++p = ((message_type << 5) | ((message_len >> 8) & 0x10));     // Command type and length MSB
-	*++p = (message & 0xFF);
-	*++p = ((message >> 8) & 0xFF);
+	*++p = ((message->type << 5) | ((message_len >> 8) & 0x10));     // Command type and length MSB
+	*++p = (message->control_item & 0xFF);
+	*++p = ((message->control_item >> 8) & 0xFF);
+
+    if (message->length > 0) {
+        memcpy (p, message->data, message->length);
+    }
 
     return message_len;
 }
+
+// int build_message(uint8_t message_type, uint16_t message, char **message_buf, uint16_t message_buf_len, 
+//                     const char *parameters, uint16_t param_len) {
+//     uint16_t message_len = 4;   // Request will always consist of at least the control item header; 2 bytes
+//                                 // and the control item ID itself; another 2 bytes
+// 	char *p;
+// 
+//     if (message_buf == NULL) {
+//         return -1;
+//     }
+// 
+//     if (parameters != NULL && param_len > 0) {
+//         if (message_len + param_len > message_buf_len) {
+//             return -2;
+//         }
+// 
+//         message_len += param_len;
+//         memcpy (message_buf+4, parameters, param_len);
+//     }
+// 
+// 	p = *message_buf;
+//     *p = (message_len & 0xFF);        // Length LSB
+// 	*++p = ((message_type << 5) | ((message_len >> 8) & 0x10));     // Command type and length MSB
+// 	*++p = (message & 0xFF);
+// 	*++p = ((message >> 8) & 0xFF);
+// 
+//     return message_len;
+// }
 
 SDRIQ_Message *decode_message(SDRIQ *sdriq) {
     SDRIQ_Message *message;
@@ -59,27 +81,28 @@ SDRIQ_Message *decode_message(SDRIQ *sdriq) {
     return message;
 }
 
-int sdriq_init(SDRIQ *sdriq, char *devnode) {
+SDRIQ *sdriq_init(char *devnode) {
     SDRIQ *handle;
 
-    if (sdriq == NULL || devnode == NULL)
+    if (devnode == NULL)
         return -1;
 
     handle = (SDRIQ *)malloc(sizeof(SDRIQ));
+    memset(handle, 0, sizeof(SDRIQ));
     handle->fd = open(devnode, O_RDWR | O_NDELAY);
     if (handle->fd < 0) {
         free(handle);
         return -2;
     }
 
+    printf("FD: %d\n", handle->fd);
+
     handle->command_buf = (char *)malloc(COMMAND_BUF_SIZE);
     handle->read_buf = (char *)malloc(READ_BUF_SIZE);
 
     handle->info = NULL;    // Unallocated until sdriq_get_info called
 
-    sdriq = handle;
-
-    return 0;
+    return handle;
 }
 
 SDRIQ_Message *message_with_reply(SDRIQ *sdriq, SDRIQ_Message *out_msg) {
@@ -93,11 +116,9 @@ SDRIQ_Message *message_with_reply(SDRIQ *sdriq, SDRIQ_Message *out_msg) {
         return NULL;
     }
     
-    message_len = build_message(out_msg->type, out_msg->control_item, sdriq->command_buf, COMMAND_BUF_SIZE, out_msg->data, out_msg->length);
-    if (message_len < 0) {
-        return NULL;
-    }
+    message_len = build_message(sdriq, out_msg);
 
+    printf("message_with_reply: FD: %d\n", sdriq->fd);
     rc = write (sdriq->fd, sdriq->command_buf, message_len);
     if (rc < 0) {
         return NULL;
@@ -138,6 +159,7 @@ int sdriq_get_info(SDRIQ *sdriq) {
 
     if (sdriq->info == NULL) {
         sdriq->info = (SDRIQ_Info *)malloc(sizeof(SDRIQ_Info));
+        memset(sdriq->info, 0, sizeof(SDRIQ_Info));
     }    
     
     // Device model name
@@ -146,6 +168,7 @@ int sdriq_get_info(SDRIQ *sdriq) {
     out_msg.length = 0;
     out_msg.data = NULL;
     reply_msg = message_with_reply(sdriq, &out_msg);
+    assert(reply_msg != NULL);
     sdriq->info->model = (char *)malloc(reply_msg->length); // Includes trailing zero!
     strncpy(sdriq->info->model, reply_msg->data, reply_msg->length);
     free(reply_msg->data);
@@ -157,6 +180,7 @@ int sdriq_get_info(SDRIQ *sdriq) {
     out_msg.length = 0;
     out_msg.data = NULL;
     reply_msg = message_with_reply(sdriq, &out_msg);
+    assert(reply_msg != NULL);
     sdriq->info->serial = (char *)malloc(reply_msg->length); // Includes trailing zero!
     strncpy(sdriq->info->serial, reply_msg->data, reply_msg->length);
     free(reply_msg->data);
@@ -168,6 +192,7 @@ int sdriq_get_info(SDRIQ *sdriq) {
     out_msg.length = 0;
     out_msg.data = NULL;
     reply_msg = message_with_reply(sdriq, &out_msg);
+    assert(reply_msg != NULL);
     sdriq->info->interface_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
     free(reply_msg->data);
     free(reply_msg);
@@ -179,6 +204,7 @@ int sdriq_get_info(SDRIQ *sdriq) {
     out_msg.data = (char *)malloc(sizeof(char));
     out_msg.data[0] = FIRMWARWE_VER_BOOT_CODE;
     reply_msg = message_with_reply(sdriq, &out_msg);
+    assert(reply_msg != NULL);
     sdriq->info->interface_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
     free(reply_msg->data);
     free(reply_msg);
@@ -189,6 +215,7 @@ int sdriq_get_info(SDRIQ *sdriq) {
     out_msg.length = 1;
     out_msg.data[0] = FIRMWARWE_VER_FIRMWARE;
     reply_msg = message_with_reply(sdriq, &out_msg);
+    assert(reply_msg != NULL);
     sdriq->info->interface_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
     free(reply_msg->data);
     free(reply_msg);
@@ -229,11 +256,11 @@ int sdriq_close(SDRIQ *sdriq) {
 }
 
 int main(int argc, char *argv[]) {
-	SDRIQ sdriq;
+	SDRIQ *sdriq;
 	
-	sdriq_init(&sdriq, "/dev/ft2450");
-	sdriq_get_info(&sdriq);
-	sdriq_close(&sdriq);
+	sdriq = sdriq_init("/dev/ft2450");
+	sdriq_get_info(sdriq);
+	sdriq_close(sdriq);
 	
 	return 0;
 }
