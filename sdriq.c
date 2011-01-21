@@ -129,7 +129,7 @@ SDRIQ_Message *message_with_reply(SDRIQ *sdriq, SDRIQ_Message *out_msg) {
     tv.tv_sec = MAX_DELAY_SECS;
     tv.tv_usec = MAX_DELAY_USECS;
 
-    rc = select(1, &readfds, NULL, NULL, &tv);
+    rc = select((sdriq->fd+1), &readfds, NULL, NULL, &tv);
     if (rc < 0) {
         // Error!
         return NULL;
