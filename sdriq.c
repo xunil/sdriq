@@ -32,34 +32,6 @@ int build_message(SDRIQ *sdriq, SDRIQ_Message *message) {
     return message_len;
 }
 
-// int build_message(uint8_t message_type, uint16_t message, char **message_buf, uint16_t message_buf_len, 
-//                     const char *parameters, uint16_t param_len) {
-//     uint16_t message_len = 4;   // Request will always consist of at least the control item header; 2 bytes
-//                                 // and the control item ID itself; another 2 bytes
-// 	char *p;
-// 
-//     if (message_buf == NULL) {
-//         return -1;
-//     }
-// 
-//     if (parameters != NULL && param_len > 0) {
-//         if (message_len + param_len > message_buf_len) {
-//             return -2;
-//         }
-// 
-//         message_len += param_len;
-//         memcpy (message_buf+4, parameters, param_len);
-//     }
-// 
-// 	p = *message_buf;
-//     *p = (message_len & 0xFF);        // Length LSB
-// 	*++p = ((message_type << 5) | ((message_len >> 8) & 0x10));     // Command type and length MSB
-// 	*++p = (message & 0xFF);
-// 	*++p = ((message >> 8) & 0xFF);
-// 
-//     return message_len;
-// }
-
 SDRIQ_Message *decode_message(SDRIQ *sdriq) {
     SDRIQ_Message *message;
     
@@ -193,19 +165,23 @@ int sdriq_get_info(SDRIQ *sdriq) {
     out_msg.data = NULL;
     reply_msg = message_with_reply(sdriq, &out_msg);
     assert(reply_msg != NULL);
-    sdriq->info->interface_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
+    if (reply_msg->length > 2) {
+        sdriq->info->interface_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
+    }
     free(reply_msg->data);
     free(reply_msg);
     
-    // Device interface (I/O protocol) version
+    // Firmware version - boot code
     out_msg.type = HOST_REQ_CTRL_ITEM;
     out_msg.control_item = TARGET_FIRMWARE_VER;
     out_msg.length = 1;
     out_msg.data = (char *)malloc(sizeof(char));
-    out_msg.data[0] = FIRMWARWE_VER_BOOT_CODE;
+    out_msg.data[0] = FIRMWARE_VER_BOOT_CODE;
     reply_msg = message_with_reply(sdriq, &out_msg);
     assert(reply_msg != NULL);
-    sdriq->info->interface_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
+    if (reply_msg->length > 2) {
+        sdriq->info->bootcode_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
+    }
     free(reply_msg->data);
     free(reply_msg);
 
@@ -213,10 +189,12 @@ int sdriq_get_info(SDRIQ *sdriq) {
     out_msg.type = HOST_REQ_CTRL_ITEM;
     out_msg.control_item = TARGET_FIRMWARE_VER;
     out_msg.length = 1;
-    out_msg.data[0] = FIRMWARWE_VER_FIRMWARE;
+    out_msg.data[0] = FIRMWARE_VER_FIRMWARE;
     reply_msg = message_with_reply(sdriq, &out_msg);
     assert(reply_msg != NULL);
-    sdriq->info->interface_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
+    if (reply_msg->length > 2) {
+        sdriq->info->firmware_version = (uint16_t)(reply_msg->data[0] | (reply_msg->data[1] << 8));
+    }
     free(reply_msg->data);
     free(reply_msg);
 
@@ -260,6 +238,7 @@ int main(int argc, char *argv[]) {
 	
 	sdriq = sdriq_init("/dev/ft2450");
 	sdriq_get_info(sdriq);
+    printf("Found %s, serial %s\n", sdriq->info->model, sdriq->info->serial);
 	sdriq_close(sdriq);
 	
 	return 0;
