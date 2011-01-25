@@ -1,12 +1,13 @@
 /* vim:ts=4:sw=4:et */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdint.h>
 #include <fcntl.h>
 #include <errno.h> 
-#include <sndfile.h>
+//#include <sndfile.h>
 
 #define LENGTH_LSB(a) (a & 0xff)
 #define LENGTH_MSB(a) ((a >> 8) & 0x1f)
@@ -83,10 +84,10 @@ int build_message(uint8_t message_type, uint16_t message,
         memcpy (message_buf+4, parameters, param_len);
     }
 
-    *message_buf = (message_len & 0xFF);        // Length LSB
-    *(message_buf+1) = ((HOST_REQUEST_CONTROL_ITEM << 5) | ((message_len >> 8) & 0x10))     // Command type and length MSB
-    *(message_buf+2) = (message & 0xFF)
-    *(message_buf+3) = ((message >> 8) & 0xFF);
+    message_buf[0] = (char)(message_len & 0xFF);        // Length LSB
+    message_buf[1] = (char)((HOST_REQ_CTRL_ITEM << 5) | ((message_len >> 8) & 0x10));     // Command type and length MSB
+    message_buf[2] = (char)(message & 0xFF);
+    message_buf[3] = (char)((message >> 8) & 0xFF);
 
     return message_len;
 }
@@ -116,7 +117,7 @@ int main(int argc, char *argv[]) {
     uint8_t msgtype;
     uint16_t msglen;
 
-    fd = open("/dev/ft2450", O_RDWR | O_NDELAY);
+    fd = open(argv[1], O_RDWR | O_NDELAY);
     if (fd < 0) {
         perror("Could not open /dev/ft2450");
         exit(1);
