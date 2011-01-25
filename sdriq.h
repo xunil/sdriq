@@ -50,6 +50,9 @@
 #define RECEIVER_STATE_IDLE     0x01        /* Receiver states */
 #define RECEIVER_STATE_RUN      0x02
 
+#define RECEIVE_CONTIGUOUS      0x00
+#define RECEIVE_ONESHOT         0x02
+
 #define RECEIVER_FREQUENCY      0x0020
 
 #define ADC_SAMPLE_RATE         0x00B0
@@ -86,7 +89,7 @@ typedef struct {
 
 SDRIQ *sdriq_init(char *devnode);
 int sdriq_get_info(SDRIQ *sdriq);
-int sdriq_begin_capture(SDRIQ *sdriq);
+int sdriq_begin_capture(SDRIQ *sdriq, int nblocks);
 int sdriq_end_capture(SDRIQ *sdriq);
 int sdriq_fetch(SDRIQ *sdriq, void *buffer, uint16_t bufsize);
 int sdriq_close(SDRIQ *sdriq);

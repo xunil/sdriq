@@ -11,6 +11,24 @@
 //#include <sndfile.h>
 #include "sdriq.h"
 
+int packet_dump(SDRIQ_Message *message) {
+    int i;
+
+    printf("--- DEBUG Dump\n");
+    printf("Type: 0x%02X Control Item: 0x%02X%02X\n", message->type, (message->control_item >> 8) & 0xFF, message->control_item & 0xFF);
+    printf("Length: %d\n", message->length);
+
+    for (i = 0; i < message->length; i++) {
+        printf("%02X ", message->data+i);
+        if (i % 16 == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+    
+    return 0;
+}
+
 int build_message(SDRIQ *sdriq, SDRIQ_Message *message) { 
     char *p;
     uint16_t message_len = 4;   // Request will always consist of at least the control item header; 2 bytes
@@ -57,17 +75,15 @@ SDRIQ *sdriq_init(char *devnode) {
     SDRIQ *handle;
 
     if (devnode == NULL)
-        return -1;
+        return NULL;
 
     handle = (SDRIQ *)malloc(sizeof(SDRIQ));
     memset(handle, 0, sizeof(SDRIQ));
     handle->fd = open(devnode, O_RDWR | O_NDELAY);
     if (handle->fd < 0) {
         free(handle);
-        return -2;
+        return NULL;
     }
-
-    printf("FD: %d\n", handle->fd);
 
     handle->command_buf = (char *)malloc(COMMAND_BUF_SIZE);
     handle->read_buf = (char *)malloc(READ_BUF_SIZE);
@@ -90,7 +106,6 @@ SDRIQ_Message *message_with_reply(SDRIQ *sdriq, SDRIQ_Message *out_msg) {
     
     message_len = build_message(sdriq, out_msg);
 
-    printf("message_with_reply: FD: %d\n", sdriq->fd);
     rc = write (sdriq->fd, sdriq->command_buf, message_len);
     if (rc < 0) {
         return NULL;
@@ -203,8 +218,68 @@ int sdriq_get_info(SDRIQ *sdriq) {
     return 0;
 }
 
-// int sdriq_begin_capture(SDRIQ *sdriq);
-// int sdriq_end_capture(SDRIQ *sdriq);
+int sdriq_begin_capture(SDRIQ *sdriq, int nblocks) {
+    SDRIQ_Message out_msg;
+    SDRIQ_Message *reply_msg;
+
+    if (sdriq == NULL) {
+        return -1;
+    }
+
+    // Set receiver state to capture
+    out_msg.type = HOST_REQ_CTRL_ITEM;
+    out_msg.control_item = RECEIVER_STATE;
+    out_msg.length = 4;
+    out_msg.data = (char *)malloc(out_msg.length);
+    out_msg.data[0] = 0x81; // Receiver channel ID; only valid value
+    out_msg.data[1] = RECEIVER_STATE_RUN;
+    out_msg.data[2] = (nblocks <= 0 ? RECEIVE_CONTIGUOUS : RECEIVE_ONESHOT);
+    out_msg.data[3] = (nblocks <= 0 ? 0x00 : nblocks); // Number of blocks to capture; ignored in contiguous mode
+
+    reply_msg = message_with_reply(sdriq, &out_msg);
+    assert(reply_msg != NULL);
+    if (reply_msg->length > 2) {
+        packet_dump(reply_msg);
+    }
+    free(reply_msg->data);
+    free(reply_msg);
+
+    free(out_msg.data);
+
+    return 0;
+}
+
+int sdriq_end_capture(SDRIQ *sdriq) {
+    SDRIQ_Message out_msg;
+    SDRIQ_Message *reply_msg;
+
+    if (sdriq == NULL) {
+        return -1;
+    }
+
+    // Set receiver state to capture
+    out_msg.type = HOST_REQ_CTRL_ITEM;
+    out_msg.control_item = RECEIVER_STATE;
+    out_msg.length = 4;
+    out_msg.data = (char *)malloc(out_msg.length);
+    out_msg.data[0] = 0x81; // Receiver channel ID; only valid value
+    out_msg.data[1] = RECEIVER_STATE_IDLE;
+    out_msg.data[2] = 0x00;
+    out_msg.data[3] = 0x00;
+
+    reply_msg = message_with_reply(sdriq, &out_msg);
+    assert(reply_msg != NULL);
+    if (reply_msg->length > 2) {
+        packet_dump(reply_msg);
+    }
+    free(reply_msg->data);
+    free(reply_msg);
+
+    free(out_msg.data);
+
+    return 0;
+}
+
 // int sdriq_fetch(SDRIQ *sdriq, void *buffer, uint16_t bufsize);
 
 int sdriq_close(SDRIQ *sdriq) {
@@ -239,6 +314,9 @@ int main(int argc, char *argv[]) {
 	sdriq = sdriq_init("/dev/ft2450");
 	sdriq_get_info(sdriq);
     printf("Found %s, serial %s\n", sdriq->info->model, sdriq->info->serial);
+    sdriq_begin_capture(sdriq, 1);
+    sleep(2);
+    sdriq_end_capture(sdriq);
 	sdriq_close(sdriq);
 	
 	return 0;
